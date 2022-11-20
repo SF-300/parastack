@@ -9,7 +9,9 @@ from typing import (
 
 from parastack._logging import LoggerLike
 from parastack.event import Event, MonitorEntered, MonitorExited, MethodCalled
-from parastack.context import Monitor
+from parastack.monitor import Monitor
+
+__all__ = "HandlerDone", "Dispatcher" 
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
@@ -79,7 +81,11 @@ class _MonitorContext:
 
 class Dispatcher:
     def __init__(self, root_handler: _MonitorHandler, logger: LoggerLike) -> None:
-        self.__root_handler = root_handler
+        def handler_wrapper(event):
+            if root_handler(event) is None:
+                event.handled = True
+
+        self.__root_handler = handler_wrapper
         self.__mid_to_handler: Dict[_MonitorId, _MonitorHandler] = dict()
         self.__logger = logger
 

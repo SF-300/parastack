@@ -2,7 +2,7 @@ from typing import Protocol, TypeAlias, Generator
 
 from parastack.event import Event
 
-__all__ = "skip", "skip_through"
+__all__ = "wait", "wait_through"
 
 
 class _Until(Protocol):
@@ -10,11 +10,11 @@ class _Until(Protocol):
         ...
 
 
-_SkipGen: TypeAlias = Generator[None, Event, Event]
+_WaitGen: TypeAlias = Generator[None, Event, Event]
 
 
-class _Skip(Protocol):
-    def __call__(self, until: _Until) -> _SkipGen:
+class _Wait(Protocol):
+    def __call__(self, until: _Until) -> _WaitGen:
         ...
 
 
@@ -23,18 +23,18 @@ class _Through(Protocol):
         ...
 
 
-def skip(until: _Until) -> _SkipGen:
-    return _skip(until)
+def wait(until: _Until) -> _WaitGen:
+    return _wait(until)
 
 
-def skip_through(f: _Through) -> _Skip:
-    def skip_wrapper(until: _Until) -> _SkipGen:
-        return _skip(until, f)
+def wait_through(f: _Through) -> _Wait:
+    def skip_wrapper(until: _Until) -> _WaitGen:
+        return _wait(until, f)
 
     return skip_wrapper
 
 
-def _skip(until: _Until, through: _Through = lambda e: e) -> _SkipGen:
+def _wait(until: _Until, through: _Through = lambda e: e) -> _WaitGen:
     while True:
         event = yield
         if through(event) is None:

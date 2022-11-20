@@ -1,4 +1,6 @@
 import typing
+from types import MethodType
+
 import typing_extensions
 from typing import Union, TypeAlias, Callable, ParamSpec, TypeVar, Generic, Type, Optional
 
@@ -6,7 +8,7 @@ from typing_extensions import Self, Protocol
 
 from parastack.event import Event, MonitorEntered, MonitorExited, MethodCalled
 
-__all__ = "EventDescriptor", "EventProducer", "Monitor"
+__all__ = "EventDescriptor", "EventProducer", "Monitor", "MonitorParent"
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
@@ -39,6 +41,9 @@ class EventProducer(Generic[_M, _P, _R]):
         else:
             return super().__eq__(other)
 
+    def __hash__(self):
+        return hash(MethodType(self._impl, self._instance))
+
 
 @typing.final
 class EventDescriptor(Generic[_P, _R]):
@@ -56,6 +61,9 @@ class EventDescriptor(Generic[_P, _R]):
             return self._impl == other.method
         else:
             return super().__eq__(other)
+
+    def __hash__(self):
+        return id(self._impl)
 
 
 class _MonitorUsageEnforcer:
@@ -113,11 +121,11 @@ class _Handler(Protocol):
         ...
 
 
-_MonitorParent: TypeAlias = Union["Monitor", "_Handler", None]
+MonitorParent: TypeAlias = Union["Monitor", "_Handler", None]
 
 
 class Monitor(metaclass=_MonitorType):
-    def __init__(self, parent: _MonitorParent = None) -> None:
+    def __init__(self, parent: MonitorParent = None) -> None:
         if isinstance(parent, Monitor):
             self.__parent, self.__handler = parent, parent.__handler
         elif isinstance(parent, _Handler):

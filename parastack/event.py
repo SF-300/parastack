@@ -1,7 +1,7 @@
 import dataclasses
 import typing
 from dataclasses import dataclass
-from typing import Generic, Callable, ParamSpec, TypeVar, TYPE_CHECKING
+from typing import Generic, Callable, ParamSpec, TypeVar, TYPE_CHECKING, Optional
 
 from typing_extensions import Concatenate
 
@@ -28,7 +28,9 @@ class MonitorEntered(Event):
 @typing.final
 @dataclass(kw_only=True)
 class MonitorExited(Exception, Event):
-    pass
+    @property
+    def cause(self) -> Optional[Exception]:
+        return self.__cause__
 
 
 @typing.final
@@ -44,7 +46,7 @@ class MethodCalled(Generic[_M, _P, _R], Event):
         return self.method(self.monitor, *self.args, **self.kwargs)
 
     def __eq__(self, other):
-        from parastack.context import EventDescriptor, EventProducer
+        from parastack.monitor import EventDescriptor, EventProducer
 
         if isinstance(other, EventDescriptor):
             # noinspection PyProtectedMember
