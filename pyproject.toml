@@ -1,0 +1,10 @@
+[project]
+name = "parastack"
+authors = [{name = "Vladimir Lebedev", email = "zeronineseven@gmail.com"}]
+dynamic = ["version", "description"]
+license = {text = "MPL-2.0"}
+requires-python = ">=3.9"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
