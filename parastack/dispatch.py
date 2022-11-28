@@ -173,7 +173,8 @@ def _monitors_ids_chain_iter(monitor: Monitor) -> Iterable[_MonitorId]:
     while True:
         yield typing.cast(_MonitorId, id(monitor))
         # noinspection PyProtectedMember
-        if not isinstance(monitor := monitor._parent, Monitor):
+        monitor = monitor._parent
+        if not isinstance(monitor, Monitor):
             break
 
 

@@ -3,7 +3,7 @@ import typing
 import inspect
 from inspect import Parameter
 from types import MethodType
-from typing import Union, TypeAlias, Callable, ParamSpec, TypeVar, Generic, Type, Optional, ContextManager, Tuple
+from typing import Union, TypeAlias, Callable, ParamSpec, TypeVar, Generic, Type, Optional, ContextManager, Tuple, Final
 from contextlib import ExitStack
 
 import typing_extensions
@@ -91,7 +91,7 @@ class _MonitorType(type):
         return cls
 
     @contextlib.contextmanager
-    def __call__(cls, context: MonitorContext = None, **kwargs) -> ContextManager[_M]:
+    def __call__(cls, context: MonitorContext, **kwargs) -> ContextManager[_M]:
         _, handler = _destructure(context)
         with ExitStack() as deffer:
             monitor = deffer.enter_context(super().__call__(context))
@@ -112,7 +112,10 @@ class _MonitorType(type):
 
 
 class Monitor(metaclass=_MonitorType):
-    def __init__(self, context: MonitorContext = None) -> None:
+    _parent: Final[Optional["Monitor"]]
+    _handler: Final[Optional[_Handler]]
+
+    def __init__(self, context: MonitorContext) -> None:
         self._parent, self._handler = _destructure(context)
 
     @typing.final
