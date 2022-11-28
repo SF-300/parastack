@@ -1,18 +1,21 @@
+import contextlib
 import typing
+import inspect
+from inspect import Parameter
 from types import MethodType
+from typing import Union, TypeAlias, Callable, ParamSpec, TypeVar, Generic, Type, Optional, ContextManager, Tuple
+from contextlib import ExitStack
 
 import typing_extensions
-from typing import Union, TypeAlias, Callable, ParamSpec, TypeVar, Generic, Type, Optional
-
 from typing_extensions import Self, Protocol
 
 from parastack.event import Event, MonitorEntered, MonitorExited, MethodCalled
 
-__all__ = "EventDescriptor", "EventProducer", "Monitor", "MonitorParent"
+__all__ = "EventDescriptor", "EventProducer", "Monitor", "MonitorContext", "VoidMonitor"
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
-_M = TypeVar("_M", bound="Monitor")
+_M = TypeVar("_M", bound=Union["Monitor", "VoidMonitor"])
 
 
 @typing.final
@@ -22,13 +25,13 @@ class EventProducer(Generic[_M, _P, _R]):
         self._instance = instance
 
     def __call__(self, *args, **kwargs) -> None:
-        # NOTE(zeronineseven): Perform manual de-mangling as we don't want the
-        #                      inheritors to have access to this field.
-        handler = getattr(self._instance, f"_{Monitor.__name__}__handler", None)
+        assert len(args) == 0, "Event-producing methods MUST be called only using keyword arguments."
+        # noinspection PyProtectedMember
+        handler = self._instance._handler
         if handler is None:
-            self._impl(self._instance, *args, **kwargs)
+            self._impl(self._instance, **kwargs)
         else:
-            handler(MethodCalled(monitor=self._instance, args=args, kwargs=kwargs, method=self._impl, handled=False))
+            handler(MethodCalled(monitor=self._instance, kwargs=kwargs, method=self._impl, handled=False))
 
     def __eq__(self, other) -> bool:
         if isinstance(other, EventDescriptor):
@@ -48,6 +51,10 @@ class EventProducer(Generic[_M, _P, _R]):
 @typing.final
 class EventDescriptor(Generic[_P, _R]):
     def __init__(self, impl: Callable[_P, _R]) -> None:
+        if __debug__ is True:
+            pkinds = {p.kind for p in inspect.signature(impl).parameters.values()}
+            if len(pkinds.intersection({Parameter.POSITIONAL_ONLY, Parameter.VAR_POSITIONAL})) > 0:
+                raise AssertionError("Event-producing methods MUST be called only using keyword arguments.")
         self._impl = impl
 
     def __get__(self, instance: Optional[_M], owner: Type["Monitor"]) -> Union[EventProducer[_M, _P, _R], Self]:
@@ -66,87 +73,94 @@ class EventDescriptor(Generic[_P, _R]):
         return id(self._impl)
 
 
-class _MonitorUsageEnforcer:
-    def __init__(self, monitor: "Monitor"):
-        self._monitor = monitor
-        self._entered = False
-
-    def __getattr__(self, item: str):
-        if not self._entered:
-            raise AssertionError("Monitor must be entered first!")
-        return getattr(self._monitor, item)
-
-    def __enter__(self):
-        if self._entered:
-            raise AssertionError("Monitor can be entered only once!")
-        self._entered = True
-        return self._monitor.__enter__()
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if not self._entered:
-            raise AssertionError("Monitor has not been entered!")
-        return self._monitor.__exit__(exc_type, exc_val, exc_tb)
-
-
-class _MonitorType(type):
-    def __new__(mcs, name, bases, class_dict):
-        cls = super().__new__(
-            mcs, name, bases, {
-                k: v if k.startswith("_") or not callable(v) else EventDescriptor(v)
-                for k, v in class_dict.items()
-            }
-        )
-        return cls
-
-    def __call__(cls, *args, **kwargs) -> _M:
-        monitor = super().__call__(*args, **kwargs)
-        if __debug__ is True:
-            monitor = _MonitorUsageEnforcer(monitor)
-        return monitor
-
-    def __subclasscheck__(self, subclass):
-        if issubclass(subclass, _MonitorUsageEnforcer):
-            return True
-        return super().__subclasscheck__(subclass)
-
-    def __instancecheck__(self, instance):
-        if isinstance(instance, _MonitorUsageEnforcer):
-            return True
-        return super().__instancecheck__(instance)
-
-
 @typing_extensions.runtime_checkable
 class _Handler(Protocol):
     def __call__(self, event: Event) -> None:
         ...
 
 
-MonitorParent: TypeAlias = Union["Monitor", "_Handler", None]
+MonitorContext: TypeAlias = Union["Monitor", "_Handler", None]
+
+
+class _MonitorType(type):
+    def __new__(mcs, name, bases, class_dict):
+        cls = super().__new__(mcs, name, bases, {
+            k: v if k.startswith("_") or not callable(v) else EventDescriptor(v)
+            for k, v in class_dict.items()
+        })
+        return cls
+
+    @contextlib.contextmanager
+    def __call__(cls, context: MonitorContext = None, **kwargs) -> ContextManager[_M]:
+        _, handler = _destructure(context)
+        with ExitStack() as deffer:
+            monitor = deffer.enter_context(super().__call__(context))
+            if handler is not None:
+                deffer.push(lambda exc_type, exc_val, tb: handler(MonitorExited(monitor=monitor, handled=False)))
+                handler(MonitorEntered(monitor=monitor, handled=False, kwargs=kwargs))
+            yield monitor
+
+    def __subclasscheck__(self, subclass):
+        if issubclass(subclass, VoidMonitor):
+            return True
+        return super().__subclasscheck__(subclass)
+
+    def __instancecheck__(self, instance):
+        if isinstance(instance, VoidMonitor):
+            return True
+        return super().__instancecheck__(instance)
 
 
 class Monitor(metaclass=_MonitorType):
-    def __init__(self, parent: MonitorParent = None) -> None:
-        if isinstance(parent, Monitor):
-            self.__parent, self.__handler = parent, parent.__handler
-        elif isinstance(parent, _Handler):
-            self.__parent, self.__handler = None, parent
-        elif parent is None:
-            self.__parent, self.__handler = None, None
-        else:
-            raise TypeError()
+    def __init__(self, context: MonitorContext = None) -> None:
+        self._parent, self._handler = _destructure(context)
+
+    @typing.final
+    def __getattr__(self, item: str):
+        try:
+            return getattr(self._handler, item)
+        except AttributeError as e:
+            raise AttributeError(f"'{type(self)}' object has no attribute '{item}'") from e
 
     def __enter__(self) -> Self:
-        if self.__handler is not None:
-            self.__handler(MonitorEntered(monitor=self, handled=False))
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        if self.__handler is not None:
-            e = MonitorExited(monitor=self, handled=False)
-            if exc_val is not None:
-                e.__cause__ = exc_val
-            self.__handler(e)
+        pass
+
+
+@typing.final
+class VoidMonitor:
+    def __getattr__(self, item: str):
+        if item.startswith("_"):
+            raise AttributeError(item)
+
+        def impl(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+            pass
+
+        # TODO(zeronineseven): Synthesize other metadata?
+        impl.__name__ = item
+        return EventProducer(impl, self)
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
 
     @property
-    def parent(self) -> "Monitor":
-        return self.__parent
+    def parent(self) -> None:
+        return None
+
+
+def _destructure(context: MonitorContext) -> Tuple[Optional[Monitor], Optional[_Handler]]:
+    if isinstance(context, Monitor):
+        # noinspection PyProtectedMember
+        parent, handler = context, context._handler
+    elif isinstance(context, _Handler):
+        parent, handler = None, context
+    elif context is None:
+        parent, handler = None, None
+    else:
+        raise TypeError()
+    return parent, handler
