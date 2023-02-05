@@ -3,23 +3,20 @@ import logging
 import typing
 from abc import ABC
 from types import TracebackType
-from typing import Protocol, Mapping, Any, TypeVar, Union, Tuple, Type, Iterable
+from typing import Protocol, Mapping, Any, TypeVar, Union, Tuple, Type
 
-from typing_extensions import TypeAlias, Literal
+from typing_extensions import TypeAlias
 
 __all__ = (
     "SupportsStr",
     "MsgArgs",
     "Extra",
     "ExcInfo",
-    "LogCtx",
     "LogMethod",
     "LeveledLogMethod",
     "LoggerLike",
     "LoggerLikeT",
     "LoggerLikeImpl",
-    "DefaultRecordField",
-    "default_record_fields",
 )
 
 
@@ -36,32 +33,6 @@ ExcInfo: TypeAlias = Union[
     Tuple[None, None, None],
     Tuple[Type[BaseException], BaseException, TracebackType],
 ]
-
-
-class LogCtx(ABC):
-    @property
-    @abc.abstractmethod
-    def prefix(self) -> str:
-        pass
-
-    @property
-    @abc.abstractmethod
-    def args(self) -> MsgArgs:
-        pass
-
-    @property
-    @abc.abstractmethod
-    def extra(self) -> Extra:
-        pass
-
-    @property
-    @abc.abstractmethod
-    def frozen(self) -> bool:
-        pass
-
-    @abc.abstractmethod
-    def __iter__(self) -> Iterable[Union[str, MsgArgs, Extra]]:
-        pass
 
 
 class LogMethod(Protocol):
@@ -127,31 +98,3 @@ class LoggerLikeImpl(ABC, LoggerLike):
     @abc.abstractmethod
     def isEnabledFor(self, level: int) -> bool:
         pass
-
-
-DefaultRecordField: TypeAlias = Literal[
-    "args",
-    "asctime",
-    "created",
-    "exc_info",
-    "exc_text",
-    "filename",
-    "funcName",
-    "levelname",
-    "levelno",
-    "lineno",
-    "module",
-    "msecs",
-    "msg",
-    "message",
-    "name",
-    "pathname",
-    "process",
-    "processName",
-    "relativeCreated",
-    "stack_info",
-    "thread",
-    "threadName",
-]
-
-default_record_fields = tuple(typing.get_args(DefaultRecordField))

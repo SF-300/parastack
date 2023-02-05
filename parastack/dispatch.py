@@ -8,7 +8,7 @@ from typing import (
 )
 
 from parastack._logging import LoggerLike
-from parastack.event import Event, MonitorEntered, MonitorExited, MethodCalled
+from parastack.event import Event, MonitorEntered, MonitorExited, MonitorMethodCalled
 from parastack.monitor import Monitor
 
 __all__ = "HandlerDone", "Dispatcher"
@@ -40,7 +40,7 @@ class _NormalizedMonitorHandler:
             if inspect.getgeneratorstate(handler) == inspect.GEN_CREATED:
                 next(handler)
 
-            def send(event: MethodCalled) -> None:
+            def send(event: MonitorMethodCalled) -> None:
                 try:
                     if isinstance(event, MonitorExited) and id(event.monitor) == mid:
                         try:
@@ -58,7 +58,7 @@ class _NormalizedMonitorHandler:
 
             throw = handler.throw
         else:
-            def send(event: MethodCalled) -> None:
+            def send(event: MonitorMethodCalled) -> None:
                 try:
                     handler(event)
                 except Exception as e:
@@ -77,7 +77,7 @@ class _NormalizedMonitorHandler:
 
 
 class Dispatcher:
-    def __init__(self, root_handler: Callable[[Event], Event | None], logger: LoggerLike) -> None:
+    def __init__(self, root_handler: Callable[[Event], Event | None], logger: LoggerLike = None) -> None:
         def handler_wrapper(event):
             if root_handler(event) is None:
                 event.handled = True
@@ -158,14 +158,6 @@ class Dispatcher:
             handler(event)
             if event.handled:
                 return
-        if not event.handled and isinstance(event, MethodCalled):
-            try:
-                event()
-            except Exception as e:
-                self.__logger.error(
-                    f"Fallback handler defined inside '{event.method.__qualname__}' failed!",
-                    exc_info=e,
-                )
 
 
 def _monitors_ids_chain_iter(monitor: Monitor) -> Iterable[_MonitorId]:

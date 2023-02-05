@@ -2,7 +2,7 @@ from typing import Protocol, TypeAlias, Generator
 
 from parastack.event import Event
 
-__all__ = "wait", "wait_through"
+__all__ = "wait", "wait_through", "stacklevel"
 
 
 class _Until(Protocol):
@@ -43,3 +43,6 @@ def _wait(until: _Until, through: _Through = lambda e: e) -> _WaitGen:
         if until(event):
             event.handled = True
             return event
+
+
+stacklevel = 7
