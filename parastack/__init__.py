@@ -1,10 +1,14 @@
 """Send events from execution stack to parallel mirroring stack (mostly intended for monitoring)."""
 
-from parastack.dispatch import Dispatcher
-from parastack.monitor import Monitor
-from parastack.event import MonitorExited
-from parastack.utils import wait, wait_through, stacklevel
+from parastack.dispatcher import Dispatcher
+from parastack.emitter import Emitter, Forked, Joined, void_emitter
+from parastack.utils import wait, wait_through, NamespaceMeta
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
-__all__ = "__version__", "Dispatcher", "Monitor", "MonitorExited", "wait", "wait_through", "stacklevel"
+__all__ = (
+    "Dispatcher",
+    "Emitter", "Forked", "Joined", "void_emitter",
+    "wait", "wait_through", "NamespaceMeta",
+    "__version__",
+)
