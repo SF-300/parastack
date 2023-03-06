@@ -1,31 +1,28 @@
+import abc
 import asyncio
 import contextlib
 import inspect
 import sys
 import typing
+from abc import ABC
 from typing import ParamSpec, TypeVar, Callable, ContextManager, Protocol, Literal, TypeAlias, Type
 
 from typing_extensions import Self
 
-__all__ = "Emitter", "Forked", "Terminated", "Joined", "void_emitter"
+__all__ = "Emitter", "Forked", "Joined", "void_emitter"
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
 
-@typing.runtime_checkable
-class Forked(Protocol):
-    child: "Emitter"
-
-    # def __str__(self):
-    #     pass
-
-
-class Terminated(Exception):
-    pass
+class Forked(ABC):
+    @property
+    @abc.abstractmethod
+    def child(self) -> "Emitter":
+        pass
 
 
-class Joined(Terminated):
+class Joined(Exception):
     @property
     def cause(self) -> Exception | None:
         return self.__cause__
@@ -41,7 +38,7 @@ class _ForkedEventFactory(Protocol):
         ...
 
 
-_CreateForkEvent: TypeAlias = _ForkedEventFactory | Type[Forked]
+_CreateForkedEvent: TypeAlias = _ForkedEventFactory | Type[Forked]
 
 
 class Emitter:
@@ -51,12 +48,12 @@ class Emitter:
     def send(self, event: object) -> None:
         self._dispatcher(self, event)
 
-    def forked(self, create_forked_event: _CreateForkEvent = Forked) -> "_ForkedEmitter":
+    def forked(self, create_forked_event: _CreateForkedEvent = Forked) -> "_ForkedEmitter":
         return _ForkedEmitter(self._dispatcher, self, create_forked_event)
 
 
 class _ForkedEmitter(Emitter):
-    def __init__(self, dispatcher: _Dispatcher, parent: Emitter, create_forked_event: _CreateForkEvent) -> None:
+    def __init__(self, dispatcher: _Dispatcher, parent: Emitter, create_forked_event: _CreateForkedEvent) -> None:
         super().__init__(dispatcher)
         self._parent = parent
 
